@@ -12,15 +12,21 @@ st.markdown("Digite sua dúvida e o assistente responderá com foco pedagógico.
 
 API_URL = "https://api.openai.com/v1/chat/completions"
 API_KEY = os.getenv("OPENAI_API_KEY")
+if not API_KEY:
+    st.error("Erro: A chave da API (OPENAI_API_KEY) não está definida no ambiente.")
+    st.stop()
+
 LOG_FILE = "chat_logs.csv"
 
-def ask_gpt(user_question):
+import time
+
+def ask_gpt(user_question, retries=3, delay=5):
     preamble = (
         "Você é um tutor especializado em Machine Learning e Big Data. "
-    "Ajude o estudante a entender conceitos como redes neurais, regressão, árvores de decisão e outros, usando exemplos e analogias simples. "
-    "Nunca entregue a resposta completa — seu papel é guiar o raciocínio do aluno, como um verdadeiro mentor. "
-    "Se o estudante pedir a resposta direta, diga: 'Sou um modelo preditivo de conhecimento, não uma calculadora de gabarito!' 🤖 "
-    "Use perguntas para estimular o pensamento crítico e incentive o aluno a encontrar a resposta por conta própria.\n\n"
+        "Ajude o estudante a entender conceitos como redes neurais, regressão, árvores de decisão e outros, usando exemplos e analogias simples. "
+        "Nunca entregue a resposta completa — seu papel é guiar o raciocínio do aluno, como um verdadeiro mentor. "
+        "Se o estudante pedir a resposta direta, diga: 'Sou um modelo preditivo de conhecimento, não uma calculadora de gabarito!' 🤖 "
+        "Use perguntas para estimular o pensamento crítico e incentive o aluno a encontrar a resposta por conta própria.\n\n"
     )
     messages = [{"role": "system", "content": preamble},
                 {"role": "user", "content": user_question}]
@@ -33,10 +39,20 @@ def ask_gpt(user_question):
         "messages": messages,
         "temperature": 0.7
     }
-    response = requests.post(API_URL, headers=headers, json=payload)
-    response.raise_for_status()
-    reply = response.json()["choices"][0]["message"]["content"]
-    return reply
+
+    for attempt in range(retries):
+        response = requests.post(API_URL, headers=headers, json=payload)
+
+        if response.status_code == 429:
+            st.warning(f"⚠️ Limite de requisições excedido. Tentando novamente em {delay} segundos...")
+            time.sleep(delay)
+        else:
+            response.raise_for_status()
+            reply = response.json()["choices"][0]["message"]["content"]
+            return reply
+
+    raise Exception("❌ Limite de requisições excedido repetidamente. Tente novamente mais tarde.")
+    
 
 def log_interaction(question, answer):
     with open(LOG_FILE, mode="a", encoding="utf-8", newline="") as f:
